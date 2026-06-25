@@ -1,0 +1,55 @@
+@using SistemPrediksiKelelahan.Models
+@using SistemPrediksiKelelahan.Pages
+
+@if (CurrentPage == PageType.Login)
+{
+    <LoginPage OnNavigateToRegister="() => NavigateTo(PageType.Register)" OnLoginSuccess="OnLoginSuccess" />
+}
+else if (CurrentPage == PageType.Register)
+{
+    <RegisterPage OnNavigateToLogin="() => NavigateTo(PageType.Login)" />
+}
+else if (CurrentPage == PageType.Dashboard)
+{
+    <DashboardPage User="CurrentUser" OnNavigateToPrediction="() => NavigateTo(PageType.Prediction)" OnLogout="OnLogout" />
+}
+else if (CurrentPage == PageType.Prediction)
+{
+    <FatiguePredictionPage User="CurrentUser" OnBackToDashboard="() => NavigateTo(PageType.Dashboard)" />
+}
+
+@code {
+    public enum PageType { Login, Register, Dashboard, Prediction }
+    private PageType CurrentPage { get; set; } = PageType.Login;
+    private UserModel CurrentUser { get; set; }
+
+    private void NavigateTo(PageType page)
+    {
+        System.Diagnostics.Debug.WriteLine($"Main.razor: NavigateTo {page} called");
+        InvokeAsync(() =>
+        {
+            CurrentPage = page;
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnLoginSuccess(UserModel user)
+    {
+        System.Diagnostics.Debug.WriteLine($"Main.razor: OnLoginSuccess triggered for user: {user?.Username}");
+        await InvokeAsync(() =>
+        {
+            CurrentUser = user;
+            NavigateTo(PageType.Dashboard);
+        });
+    }
+
+    private void OnLogout()
+    {
+        System.Diagnostics.Debug.WriteLine("Main.razor: OnLogout triggered");
+        InvokeAsync(() =>
+        {
+            CurrentUser = null;
+            NavigateTo(PageType.Login);
+        });
+    }
+}
