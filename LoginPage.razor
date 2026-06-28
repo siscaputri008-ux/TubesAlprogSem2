@@ -1,0 +1,227 @@
+@inject DatabaseService DbService
+@inject FaceRecognitionService FaceService
+
+<div class="container">
+    <!-- Logo & Title -->
+    <div class="card" style="margin-top: 20px; text-align: center;">
+        <img src="app_logo.png" style="width: 80px; height: 80px; margin: 0 auto 10px auto;" />
+        <h1>Sistem Deteksi Kelelahan</h1>
+        <p class="subtitle" style="margin-bottom: 0;">Tematik: Deteksi Kelelahan Mahasiswa</p>
+    </div>
+
+    <!-- Login Form Card -->
+    <div class="card">
+        <h2 style="justify-content: center; margin-bottom: 15px;">Silakan Masuk ke Akun Anda</h2>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="alert-error">@ErrorMessage</div>
+        }
+
+        @if (!string.IsNullOrEmpty(InfoMessage))
+        {
+            <div class="alert-info">@InfoMessage</div>
+        }
+
+        <!-- Role Selector -->
+        <div class="form-group">
+            <label>Pilih Role</label>
+            <div class="select-wrapper">
+                <select class="form-select" @bind="SelectedRole">
+                    <option value="Mahasiswa">Mahasiswa</option>
+                    <option value="Dosen">Dosen</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Username input -->
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" class="form-input" placeholder="Masukkan username" @bind="Username" />
+        </div>
+
+        <!-- Password input -->
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" class="form-input" placeholder="Masukkan password" @bind="Password" />
+        </div>
+
+        <!-- Login Button -->
+        <button class="btn btn-primary" @onclick="HandleLogin" disabled="@IsProcessing">
+            @if (IsProcessing)
+            {
+                <span class="spinner" style="width: 18px; height: 18px; border-width: 2px; display: inline-block; margin-right: 8px;"></span>
+                <span>Memproses Verifikasi...</span>
+            }
+            else
+            {
+                <span>Verifikasi &amp; Masuk</span>
+            }
+        </button>
+
+        @if (ShowSimilarityResult)
+        {
+            <div style="text-align: center; margin-top: 15px; font-weight: 700; color: @(IsFaceMatched ? "var(--color-success)" : "var(--color-danger)")">
+                @SimilarityText
+            </div>
+        }
+    </div>
+
+    <!-- Register Redirect -->
+    <button class="btn btn-link" @onclick="NavigateToRegister">
+        Belum punya akun? Daftar disini
+    </button>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnNavigateToRegister { get; set; }
+    [Parameter] public EventCallback<UserModel> OnLoginSuccess { get; set; }
+
+    private string Username { get; set; } = string.Empty;
+    private string Password { get; set; } = string.Empty;
+    private string SelectedRole { get; set; } = "Mahasiswa";
+    
+    private string ErrorMessage { get; set; } = string.Empty;
+    private string InfoMessage { get; set; } = string.Empty;
+    private bool IsProcessing { get; set; } = false;
+
+    private bool ShowSimilarityResult { get; set; } = false;
+    private bool IsFaceMatched { get; set; } = false;
+    private string SimilarityText { get; set; } = string.Empty;
+
+    private void NavigateToRegister()
+    {
+        OnNavigateToRegister.InvokeAsync();
+    }
+
+    private async Task HandleLogin()
+    {
+        ErrorMessage = string.Empty;
+        InfoMessage = string.Empty;
+        ShowSimilarityResult = false;
+
+        if (string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
+        {
+            ErrorMessage = "Username dan password wajib diisi!";
+            return;
+        }
+
+        IsProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            // 1. Validasi kredensial dan role
+            var user = await DbService.ValidateUser(Username, Password, SelectedRole);
+            if (user == null)
+            {
+                ErrorMessage = "Username, password, atau role salah!";
+                IsProcessing = false;
+                return;
+            }
+
+            // 2. Cek apakah data wajah terdaftar ada
+            byte[] storedFace = FaceService.LoadStoredFace(user.Id);
+            if (storedFace == null)
+            {
+                InfoMessage = string.Empty;
+                ErrorMessage = $"❌ Data biometrik wajah tidak ditemukan untuk akun '{user.Username}' (ID: {user.Id}). Silakan hubungi admin atau daftar ulang.";
+                IsProcessing = false;
+                return;
+            }
+
+            // 3. Capture wajah dari webcam menggunakan EmguCV
+            InfoMessage = "📸 Mengakses kamera webcam... Mohon tunggu.";
+            StateHasChanged();
+
+            byte[] capturedFace = null;
+            string captureError = null;
+
+            // Run webcam capture on background thread to avoid UI blocking
+            await Task.Run(() =>
+            {
+                try
+                {
+                    capturedFace = FaceService.CaptureFace();
+                }
+                catch (Exception ex)
+                {
+                    captureError = ex.Message;
+                }
+            });
+            if (!string.IsNullOrEmpty(captureError))
+            {
+                await InvokeAsync(() =>
+                {
+                    ErrorMessage = $"❌ Gagal mengakses kamera: {captureError}";
+                    InfoMessage = string.Empty;
+                    IsProcessing = false;
+                    StateHasChanged();
+                });
+                return;
+            }
+
+            if (capturedFace == null)
+            {
+                await InvokeAsync(() =>
+                {
+                    InfoMessage = string.Empty;
+                    ErrorMessage = "❌ Gagal mendeteksi wajah dari kamera! Pastikan:\n• Kamera webcam terhubung dan aktif\n• Wajah Anda terlihat jelas di depan kamera\n• Pencahayaan cukup";
+                    IsProcessing = false;
+                    StateHasChanged();
+                });
+                return;
+            }
+
+            // 4. Bandingkan wajah
+            await InvokeAsync(() =>
+            {
+                InfoMessage = "⏳ Memproses verifikasi biometrik wajah...";
+                StateHasChanged();
+            });
+
+            double similarity = 0;
+            try
+            {
+                similarity = FaceService.CompareFaces(capturedFace, storedFace);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"CompareFaces exception: {ex}");
+            }
+
+            bool isSuccess = false;
+            await InvokeAsync(() =>
+            {
+                IsFaceMatched = similarity >= 15.0;
+                SimilarityText = $"📊 Kemiripan Wajah: {similarity:F1}% - {(IsFaceMatched ? "✅ COCOK" : "❌ TIDAK COCOK")}";
+                ShowSimilarityResult = true;
+                InfoMessage = string.Empty;
+                IsProcessing = false;
+
+                if (IsFaceMatched)
+                {
+                    Username = string.Empty;
+                    Password = string.Empty;
+                    isSuccess = true;
+                }
+                else
+                {
+                    ErrorMessage = $"❌ Wajah tidak cocok dengan data terdaftar! Kemiripan: {similarity:F1}% (Dibutuhkan: >= 15.0%). Silakan coba lagi.";
+                }
+                StateHasChanged();
+            });
+
+            if (isSuccess)
+            {
+                System.Diagnostics.Debug.WriteLine("LoginPage: Face matched, invoking OnLoginSuccess...");
+                await OnLoginSuccess.InvokeAsync(user);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Terjadi kesalahan: {ex.Message}";
+            IsProcessing = false;
+        }
+    }
+}

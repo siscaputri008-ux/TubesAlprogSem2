@@ -1,0 +1,188 @@
+@inject FatigueService FatigueService
+@inject ChatbotService ChatbotService
+
+<div class="container">
+    <div class="card" style="text-align: center; margin-top: 10px;">
+        <h1>Simulasi Prediksi Kelelahan</h1>
+        <p class="subtitle" style="margin-bottom: 0;">Tematik: Deteksi Kelelahan Mahasiswa</p>
+    </div>
+
+    <!-- Sliders Input Card -->
+    <div class="card">
+        <h2>📊 Input Parameter Fisik</h2>
+        <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 15px;" />
+
+        <!-- BPM Slider -->
+        <div class="slider-container">
+            <div class="slider-header">
+                <span class="label">Detak Jantung (Heart Rate)</span>
+                <span class="value">@BPM BPM</span>
+            </div>
+            <input type="range" class="custom-slider" min="40" max="150" @bind="BPM" @bind:event="oninput" />
+            <span style="font-size: 11px; color: var(--text-muted);">Rentang Normal: 60 - 90 BPM</span>
+        </div>
+
+        <!-- Sleep Slider -->
+        <div class="slider-container" style="margin-top: 15px;">
+            <div class="slider-header">
+                <span class="label">Durasi Tidur (Sleep Duration)</span>
+                <span class="value">@SleepHours jam</span>
+            </div>
+            <input type="range" class="custom-slider" min="0" max="12" @bind="SleepHours" @bind:event="oninput" />
+            <span style="font-size: 11px; color: var(--text-muted);">Rentang Optimal: 7 - 9 jam</span>
+        </div>
+
+        <!-- Simulate Button -->
+        <button class="btn @SimulateBtnClass" @onclick="HandleSimulateSensor" style="margin-top: 15px;">
+            @SimulateBtnText
+        </button>
+    </div>
+
+    <!-- Predict Button -->
+    <button class="btn btn-primary" @onclick="HandlePrediction" disabled="@IsAnalyzing">
+        @if (IsAnalyzing)
+        {
+            <span class="spinner" style="width: 18px; height: 18px; border-width: 2px; display: inline-block; margin-right: 8px;"></span>
+            <span>Menganalisis...</span>
+        }
+        else
+        {
+            <span>🔍 Mulai Klasifikasi Kelelahan</span>
+        }
+    </button>
+
+    @if (IsAnalyzing)
+    {
+        <div class="card" style="text-align: center; padding: 15px;">
+            <div class="ai-loader">
+                <div class="spinner"></div>
+                <p class="loading-text" style="margin-top: 10px;">Menghubungi Chatbot AI untuk rekomendasi personal...</p>
+            </div>
+        </div>
+    }
+
+    <!-- Result Card -->
+    @if (Result != null && !IsAnalyzing)
+    {
+        <div class="card">
+            <h2 style="justify-content: center; margin-bottom: 15px;">📋 Hasil Analisis Sistem &amp; AI</h2>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 12px;" />
+
+            <div class="grid-stats">
+                <div class="stat-box">
+                    <span class="stat-label">Klasifikasi Threshold:</span>
+                    <span class="stat-value" style="color: @GetStatusColor(Result.Status);">@Result.Status.ToUpper()</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Indeks Kelelahan (Fuzzy):</span>
+                    <span class="stat-value" style="color: #38bdf8;">@Result.FuzzyIndex.ToString("F1")% (@Result.FuzzyStatus)</span>
+                </div>
+            </div>
+
+            <div class="status-summary-box @Result.Status.ToLower().Replace(" ", "")" style="margin-top: 15px;">
+                <span style="font-weight: 700; font-size: 15px;">❤️ Detak Jantung: @Result.BPM BPM  |  😴 Tidur: @Result.DurasiTidur jam</span>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 12px 0;" />
+
+            <div>
+                <span class="stat-label" style="font-weight: 600; display: block; margin-bottom: 4px; color: var(--text-secondary);">💡 Rekomendasi Sistem (Rules):</span>
+                <p style="font-size: 13.5px; color: #e2e8f0; line-height: 1.4;">@Result.Rekomendasi</p>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 12px 0;" />
+
+            <div>
+                <span class="stat-label" style="font-weight: 600; display: block; margin-bottom: 4px; color: #38bdf8;">🤖 Analisis &amp; Solusi AI (Gemini):</span>
+                <p style="font-size: 13.5px; color: #e2e8f0; line-height: 1.4;">@Result.FuzzyRekomendasi</p>
+            </div>
+        </div>
+    }
+
+    <!-- Back Button -->
+    <button class="btn btn-neutral" @onclick="GoBack" style="margin-bottom: 30px;">
+        Kembali ke Dashboard
+    </button>
+</div>
+
+@code {
+    [Parameter] public UserModel User { get; set; }
+    [Parameter] public EventCallback OnBackToDashboard { get; set; }
+
+    private int BPM { get; set; } = 72;
+    private int SleepHours { get; set; } = 7;
+
+    private bool IsAnalyzing { get; set; } = false;
+    private FatigueResult Result { get; set; }
+
+    private string SimulateBtnText { get; set; } = "📡 Simulasi Data Sensor (Acak)";
+    private string SimulateBtnClass { get; set; } = "btn-warning";
+
+    private Random _random = new();
+
+    private void GoBack()
+    {
+        OnBackToDashboard.InvokeAsync();
+    }
+
+    private async Task HandleSimulateSensor()
+    {
+        BPM = _random.Next(50, 130);
+        SleepHours = _random.Next(2, 10);
+
+        SimulateBtnText = "✅ Data Tersimulasi!";
+        SimulateBtnClass = "btn-success";
+        StateHasChanged();
+
+        await Task.Delay(2000);
+
+        SimulateBtnText = "📡 Simulasi Data Sensor (Acak)";
+        SimulateBtnClass = "btn-warning";
+        StateHasChanged();
+    }
+
+    private async Task HandlePrediction()
+    {
+        if (User == null) return;
+
+        IsAnalyzing = true;
+        Result = null;
+        StateHasChanged();
+
+        try
+        {
+            // 1. Run local prediction (threshold + fuzzy)
+            var res = FatigueService.PredictFatigue(BPM, SleepHours);
+
+            // 2. Fetch custom AI recommendation based on fuzzy
+            string aiRec = await ChatbotService.GetFuzzyAnalysisRecommendationAsync(
+                res.BPM, res.DurasiTidur, res.FuzzyIndex, res.FuzzyStatus
+            );
+
+            res.FuzzyRekomendasi = aiRec;
+            Result = res;
+
+            // 3. Save to database history
+            await FatigueService.SaveHistory(res, User.Id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error running prediction: {ex.Message}");
+        }
+        finally
+        {
+            IsAnalyzing = false;
+        }
+    }
+
+    private string GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Normal" => "var(--color-success)",
+            "Lelah" => "var(--color-warning)",
+            "Sangat Lelah" => "var(--color-danger)",
+            _ => "var(--text-secondary)"
+        };
+    }
+}

@@ -1,0 +1,315 @@
+@inject DatabaseService DbService
+@inject FatigueService FatigueService
+@inject ChatbotService ChatbotService
+@inject IJSRuntime JSRuntime
+
+<div class="container">
+    <!-- Profile Banner Card -->
+    <div class="card profile-banner">
+        <div class="avatar">👤</div>
+        <div class="profile-info">
+            <span class="profile-name">Selamat Datang, @User?.Nama!</span>
+            <span class="profile-role">Role: @User?.Role</span>
+            <span class="profile-meta">NRP / NIDN: @User?.NRP</span>
+            <span class="profile-tematik">Tematik: @User?.Tematik</span>
+        </div>
+    </div>
+
+    <!-- Quick Action Button -->
+    <button class="btn btn-success" @onclick="NavigateToPrediction">
+        🔍 Mulai Simulasi Prediksi Kelelahan
+    </button>
+
+    @if (User?.Role == "Mahasiswa")
+    {
+        <!-- MAHASISWA PERSONAL VIEW -->
+        <!-- Latest Prediction Card -->
+        <div class="card">
+            <h2>📊 Hasil Analisis Terakhir</h2>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 15px;" />
+
+            @if (LatestRecord != null)
+            {
+                <div class="grid-stats">
+                    <div class="stat-box">
+                        <span class="stat-label">Detak Jantung (BPM):</span>
+                        <span class="stat-value">@LatestRecord.BPM BPM</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Durasi Tidur:</span>
+                        <span class="stat-value">@LatestRecord.DurasiTidur jam</span>
+                    </div>
+                    <div class="stat-box" style="grid-column: span 2;">
+                        <span class="stat-label">Tingkat Kelelahan (Fuzzy):</span>
+                        <span class="stat-value" style="color: #38bdf8;">@LatestRecord.FuzzyIndex.ToString("F1")% (@LatestRecord.FuzzyStatus)</span>
+                    </div>
+                </div>
+
+                <div class="status-summary-box @LatestRecord.Status.ToLower().Replace(" ", "")">
+                    <span style="font-size: 16px; font-weight: 700;">@LatestRecord.Status.ToUpper()</span>
+                    <span style="font-size: 12px; opacity: 0.9;">Fuzzy Logic: @LatestRecord.FuzzyStatus</span>
+                </div>
+
+                <div style="margin-top: 10px;">
+                    <span class="stat-label" style="font-weight: 600; display: block; margin-bottom: 4px;">Rekomendasi AI &amp; Sistem:</span>
+                    <p style="font-size: 13.5px; color: #e2e8f0;">@(string.IsNullOrEmpty(LatestRecord.FuzzyRekomendasi) ? LatestRecord.Rekomendasi : LatestRecord.FuzzyRekomendasi)</p>
+                </div>
+            }
+            else
+            {
+                <p style="text-align: center; color: var(--text-secondary); margin: 15px 0;">
+                    Belum ada riwayat prediksi. Silakan lakukan tes pertama Anda dengan tombol di atas.
+                </p>
+            }
+        </div>
+
+        <!-- History Card -->
+        <div class="card">
+            <h2>📜 Riwayat Prediksi Anda</h2>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 15px;" />
+
+            @if (PersonalHistory == null || PersonalHistory.Count == 0)
+            {
+                <p style="text-align: center; color: var(--text-secondary); margin: 10px 0;">
+                    Belum ada riwayat klasifikasi.
+                </p>
+            }
+            else
+            {
+                <div class="history-list">
+                    @foreach (var item in PersonalHistory)
+                    {
+                        <div class="history-item">
+                            <div class="history-header">
+                                <span class="history-date">@item.Timestamp.ToString("dd MMM yyyy, HH:mm")</span>
+                                <span class="badge-status @(item.Status == "Normal" ? "badge-normal" : (item.Status == "Lelah" ? "badge-lelah" : "badge-sangatlelah"))">
+                                    @item.Status
+                                </span>
+                            </div>
+                            <span class="history-params">❤️ @item.BPM BPM  |  😴 @item.DurasiTidur jam</span>
+                            <span class="history-fuzzy">Fuzzy Index Kelelahan: @item.FuzzyIndex.ToString("F1")% (@item.FuzzyStatus)</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (User?.Role == "Dosen")
+    {
+        <!-- DOSEN STUDENTS VIEW -->
+        <div class="card">
+            <h2>📈 Monitoring Kelelahan Mahasiswa</h2>
+            <p class="subtitle" style="text-align: left; margin-bottom: 12px;">Daftar rekapitulasi kelelahan mahasiswa dari database secara real-time.</p>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 15px;" />
+
+            @if (StudentHistoryLogs == null || StudentHistoryLogs.Count == 0)
+            {
+                <p style="text-align: center; color: var(--text-secondary); margin: 15px 0;">
+                    Tidak ada riwayat kelelahan mahasiswa yang terekam.
+                </p>
+            }
+            else
+            {
+                <div class="history-list" style="max-height: 400px;">
+                    @foreach (var log in StudentHistoryLogs)
+                    {
+                        <div class="history-item">
+                            <div class="history-header">
+                                <span class="history-student-identity">@log.StudentName</span>
+                                <span class="badge-status @(log.Status == "Normal" ? "badge-normal" : (log.Status == "Lelah" ? "badge-lelah" : "badge-sangatlelah"))">
+                                    @log.Status
+                                </span>
+                            </div>
+                            <div class="history-date" style="margin-top: -4px; margin-bottom: 4px;">NRP: @log.StudentNrp  •  @log.Timestamp.ToString("dd MMM yyyy, HH:mm")</div>
+                            <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 4px;" />
+                            <span class="history-params" style="font-size: 12.5px;">BPM: @log.BPM  |  Tidur: @log.Sleep jam  |  Fuzzy: @log.FuzzyIndex.ToString("F1")% (@log.FuzzyStatus)</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <!-- AI CHATBOT CARD -->
+    <div class="card">
+        <div class="chatbot-box">
+            <h2>💬 AI Chatbot Konsultan Kesehatan</h2>
+            <p class="subtitle" style="text-align: left; margin-bottom: 8px;">Konsultasikan seputar pola tidur, kebugaran tubuh, stres akademik, dan cara kerja aplikasi.</p>
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 10px;" />
+
+            <div class="chat-messages-container" id="chat-container">
+                @foreach (var chat in ChatMessages)
+                {
+                    <div class="chat-bubble @(chat.IsUser ? "user" : "ai")">
+                        @chat.Text
+                    </div>
+                }
+                @if (IsTyping)
+                {
+                    <div class="chat-bubble ai">
+                        <div class="ai-loader">
+                            <span class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></span>
+                            <span style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">AI sedang mengetik...</span>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="chat-input-row">
+                <input type="text" class="form-input" placeholder="Tanyakan seputar kelelahan &amp; tidur..." 
+                       @bind="ChatInputText" @onkeyup="HandleChatKeyUp" disabled="@IsTyping" />
+                <button class="btn btn-primary" @onclick="SendChatMessage" disabled="@(IsTyping || string.IsNullOrWhiteSpace(ChatInputText))">
+                    Kirim
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logout Button -->
+    <button class="btn btn-danger" @onclick="HandleLogout" style="margin-bottom: 30px;">
+        🚪 Keluar (Logout)
+    </button>
+</div>
+
+@code {
+    [Parameter] public UserModel User { get; set; }
+    [Parameter] public EventCallback OnNavigateToPrediction { get; set; }
+    [Parameter] public EventCallback OnLogout { get; set; }
+
+    private List<FatigueModel> PersonalHistory { get; set; } = new();
+    private FatigueModel LatestRecord { get; set; }
+    private List<DosenStudentLogModel> StudentHistoryLogs { get; set; } = new();
+
+    private List<ChatMessage> ChatMessages { get; set; } = new();
+    private string ChatInputText { get; set; } = string.Empty;
+    private bool IsTyping { get; set; } = false;
+
+
+
+    public class DosenStudentLogModel
+    {
+        public string StudentName { get; set; }
+        public string StudentNrp { get; set; }
+        public int BPM { get; set; }
+        public int Sleep { get; set; }
+        public double FuzzyIndex { get; set; }
+        public string FuzzyStatus { get; set; }
+        public string Status { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        if (User == null) return;
+
+        // Initialize Chat Messages with a welcome text if empty
+        if (ChatMessages.Count == 0)
+        {
+            ChatMessages.Add(new ChatMessage 
+            { 
+                Text = $"Halo, {User.Nama}! Saya asisten AI. Silakan tanyakan hal apa pun seputar pencegahan kelelahan, kualitas tidur, detak jantung, atau mintalah saran praktis untuk memulihkan kebugaran Anda.", 
+                IsUser = false 
+            });
+        }
+
+        if (User.Role == "Mahasiswa")
+        {
+            PersonalHistory = await FatigueService.GetHistory(User.Id);
+            if (PersonalHistory != null && PersonalHistory.Count > 0)
+            {
+                LatestRecord = PersonalHistory[0];
+            }
+            else
+            {
+                LatestRecord = null;
+            }
+        }
+        else if (User.Role == "Dosen")
+        {
+            var rawLogs = await FatigueService.GetAllHistory();
+            var users = await DbService.GetAllUsers();
+            
+            var studentMap = new Dictionary<int, UserModel>();
+            foreach (var u in users)
+            {
+                studentMap[u.Id] = u;
+            }
+
+            StudentHistoryLogs.Clear();
+            foreach (var log in rawLogs)
+            {
+                if (studentMap.TryGetValue(log.UserId, out var stud) && stud.Role == "Mahasiswa")
+                {
+                    StudentHistoryLogs.Add(new DosenStudentLogModel
+                    {
+                        StudentName = stud.Nama,
+                        StudentNrp = stud.NRP,
+                        BPM = log.BPM,
+                        Sleep = log.DurasiTidur,
+                        FuzzyIndex = log.FuzzyIndex,
+                        FuzzyStatus = log.FuzzyStatus,
+                        Status = log.Status,
+                        Timestamp = log.Timestamp
+                    });
+                }
+            }
+        }
+    }
+
+    private void NavigateToPrediction()
+    {
+        OnNavigateToPrediction.InvokeAsync();
+    }
+
+    private void HandleLogout()
+    {
+        OnLogout.InvokeAsync();
+    }
+
+    private async Task HandleChatKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendChatMessage();
+        }
+    }
+
+    private async Task SendChatMessage()
+    {
+        string message = ChatInputText;
+        if (string.IsNullOrWhiteSpace(message)) return;
+
+        ChatInputText = string.Empty;
+        ChatMessages.Add(new ChatMessage { Text = message, IsUser = true });
+        
+        IsTyping = true;
+        StateHasChanged();
+        await ScrollChatToBottom();
+
+        // Query Gemini API with full conversation context
+        string aiReply = await ChatbotService.GetChatResponseAsync(ChatMessages);
+        
+        IsTyping = false;
+        ChatMessages.Add(new ChatMessage { Text = aiReply, IsUser = false });
+        StateHasChanged();
+        await ScrollChatToBottom();
+    }
+
+    private async Task ScrollChatToBottom()
+    {
+        try
+        {
+            // Scroll chat container
+            await JSRuntime.InvokeVoidAsync("eval", "var el = document.getElementById('chat-container'); if(el) { el.scrollTop = el.scrollHeight; }");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scrolling chat container: {ex.Message}");
+        }
+    }
+}

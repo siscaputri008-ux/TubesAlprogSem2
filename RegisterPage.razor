@@ -1,0 +1,289 @@
+@inject DatabaseService DbService
+@inject FaceRecognitionService FaceService
+
+<div class="container">
+    <!-- Header -->
+    <div class="card" style="text-align: center; margin-top: 10px;">
+        <h1>Buat Akun Baru</h1>
+        <p class="subtitle" style="margin-bottom: 0;">Deteksi Kelelahan Mahasiswa</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert-error">@ErrorMessage</div>
+    }
+
+    @if (!string.IsNullOrEmpty(SuccessMessage))
+    {
+        <div class="alert-info" style="border-color: var(--color-success); color: #a7f3d0; background: rgba(16, 185, 129, 0.1);">
+            @SuccessMessage
+        </div>
+    }
+
+    <!-- Inputs Form -->
+    <div class="card">
+        <h2>Formulir Registrasi</h2>
+
+        <div class="form-group">
+            <label>Tematik Proyek</label>
+            <input type="text" class="form-input" readonly value="Deteksi Kelelahan Mahasiswa" />
+        </div>
+
+        <div class="form-group">
+            <label>Pilih Role</label>
+            <div class="select-wrapper">
+                <select class="form-select" @bind="Role">
+                    <option value="Mahasiswa">Mahasiswa</option>
+                    <option value="Dosen">Dosen</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Nama Lengkap</label>
+            <input type="text" class="form-input" placeholder="Masukkan nama lengkap" @bind="Nama" />
+        </div>
+
+        <div class="form-group">
+            <label>NRP / NIDN</label>
+            <input type="text" class="form-input" placeholder="Masukkan nomor induk" @bind="Nrp" />
+        </div>
+
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" class="form-input" placeholder="Buat username unik" @bind="Username" />
+        </div>
+
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" class="form-input" placeholder="Masukkan password" @bind="Password" />
+        </div>
+
+        <div class="form-group">
+            <label>Konfirmasi Password</label>
+            <input type="password" class="form-input" placeholder="Ketik ulang password" @bind="ConfirmPassword" />
+        </div>
+    </div>
+
+    <!-- Biometrics Card -->
+    <div class="card">
+        <div class="biometric-container">
+            <h2>📸 Pemindaian Wajah (Biometrik)</h2>
+            <p class="biometric-desc">Klik tombol di bawah untuk mengambil foto wajah via webcam. Sistem akan otomatis mendeteksi dan memotong area wajah.</p>
+
+            @if (CroppedFaceBytes != null)
+            {
+                <div class="face-preview-frame">
+                    <img class="face-preview-image" src="data:image/jpeg;base64,@Convert.ToBase64String(CroppedFaceBytes)" />
+                </div>
+            }
+
+            <button class="btn btn-warning" @onclick="CaptureFace" disabled="@IsProcessing">
+                @if (IsProcessing)
+                {
+                    <span class="spinner" style="width: 16px; height: 16px; border-width: 2px; display: inline-block; margin-right: 8px;"></span>
+                    <span>Mengakses Kamera...</span>
+                }
+                else if (CroppedFaceBytes != null)
+                {
+                    <span>✅ Wajah Terdeteksi (Foto Ulang)</span>
+                }
+                else
+                {
+                    <span>Ambil Foto Wajah</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <!-- Register Button -->
+    <button class="btn btn-success" @onclick="HandleRegister" disabled="@(IsProcessing || CroppedFaceBytes == null)">
+        Daftar Sekarang
+    </button>
+
+    <button class="btn btn-neutral" @onclick="NavigateToLogin" style="margin-bottom: 20px;">
+        Kembali ke Login
+    </button>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnNavigateToLogin { get; set; }
+
+    private string Role { get; set; } = "Mahasiswa";
+    private string Nama { get; set; } = string.Empty;
+    private string Nrp { get; set; } = string.Empty;
+    private string Username { get; set; } = string.Empty;
+    private string Password { get; set; } = string.Empty;
+    private string ConfirmPassword { get; set; } = string.Empty;
+
+    private byte[]? CroppedFaceBytes { get; set; }
+    
+    private string ErrorMessage { get; set; } = string.Empty;
+    private string SuccessMessage { get; set; } = string.Empty;
+    private bool IsProcessing { get; set; } = false;
+
+    private void NavigateToLogin()
+    {
+        OnNavigateToLogin.InvokeAsync();
+    }
+
+    private async Task CaptureFace()
+    {
+        ErrorMessage = string.Empty;
+        SuccessMessage = string.Empty;
+        IsProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            SuccessMessage = "📸 Mengakses kamera webcam... Mohon tunggu dan hadapkan wajah ke kamera.";
+            StateHasChanged();
+
+            byte[]? croppedBytes = null;
+            string? captureError = null;
+
+            // Run webcam capture on background thread to avoid blocking UI
+            await Task.Run(() =>
+            {
+                try
+                {
+                    croppedBytes = FaceService.CaptureFace();
+                }
+                catch (Exception ex)
+                {
+                    captureError = ex.Message;
+                }
+            });
+            if (!string.IsNullOrEmpty(captureError))
+            {
+                await InvokeAsync(() =>
+                {
+                    SuccessMessage = string.Empty;
+                    ErrorMessage = $"❌ Gagal mengakses kamera: {captureError}";
+                    StateHasChanged();
+                });
+                return;
+            }
+
+            await InvokeAsync(() =>
+            {
+                if (croppedBytes != null)
+                {
+                    CroppedFaceBytes = croppedBytes;
+                    SuccessMessage = "✅ Wajah berhasil terdeteksi dan terekam!";
+                    ErrorMessage = string.Empty;
+                }
+                else
+                {
+                    CroppedFaceBytes = null;
+                    SuccessMessage = string.Empty;
+                    ErrorMessage = "❌ Gagal mendeteksi wajah dari kamera! Pastikan:\n• Kamera webcam terhubung dan aktif\n• Wajah Anda terlihat jelas di depan kamera\n• Pencahayaan cukup";
+                }
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            await InvokeAsync(() =>
+            {
+                ErrorMessage = $"Gagal memproses kamera: {ex.Message}";
+                SuccessMessage = string.Empty;
+                StateHasChanged();
+            });
+        }
+        finally
+        {
+            await InvokeAsync(() =>
+            {
+                IsProcessing = false;
+                StateHasChanged();
+            });
+        }
+    }
+    private async Task HandleRegister()
+    {
+        ErrorMessage = string.Empty;
+        SuccessMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(Nama) || string.IsNullOrWhiteSpace(Nrp) || 
+            string.IsNullOrWhiteSpace(Username) || string.IsNullOrWhiteSpace(Password))
+        {
+            ErrorMessage = "Semua field wajib diisi!";
+            return;
+        }
+
+        if (Password != ConfirmPassword)
+        {
+            ErrorMessage = "Konfirmasi password tidak sesuai!";
+            return;
+        }
+
+        if (CroppedFaceBytes == null)
+        {
+            ErrorMessage = "Silakan lakukan perekaman wajah terlebih dahulu!";
+            return;
+        }
+
+        IsProcessing = true;
+
+        try
+        {
+            // Validasi username unik
+            var existing = await DbService.GetUserByUsername(Username);
+            if (existing != null)
+            {
+                ErrorMessage = "Username sudah digunakan!";
+                IsProcessing = false;
+                return;
+            }
+
+            var user = new UserModel
+            {
+                Nama = Nama,
+                NRP = Nrp,
+                Username = Username,
+                Password = Password,
+                Role = Role,
+                Tematik = "Deteksi Kelelahan Mahasiswa",
+                CreatedAt = DateTime.Now
+            };
+
+            int userId = await DbService.SaveUser(user);
+
+            if (userId > 0)
+            {
+                // Simpan biometrik wajah ke folder lokal dengan userId yang benar
+                FaceService.SaveFace(userId, CroppedFaceBytes);
+
+                // Verifikasi file wajah tersimpan
+                var verifyFace = FaceService.LoadStoredFace(userId);
+                if (verifyFace != null)
+                {
+                    SuccessMessage = $"🎉 Registrasi sukses! Data wajah tersimpan (ID: {userId}). Mengarahkan ke login...";
+                }
+                else
+                {
+                    SuccessMessage = $"🎉 Registrasi sukses (ID: {userId}), tapi data wajah mungkin tidak tersimpan dengan benar.";
+                }
+                
+                StateHasChanged();
+
+                // Tunggu 2 detik lalu kembali ke halaman login
+                await Task.Delay(2000);
+                await OnNavigateToLogin.InvokeAsync();
+            }
+            else
+            {
+                ErrorMessage = "Gagal menyimpan data pengguna ke database!";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Terjadi kesalahan: {ex.Message}";
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+}
